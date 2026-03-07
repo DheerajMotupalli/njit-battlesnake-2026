@@ -62,6 +62,21 @@ pub fn evaluate(board: &SimBoard) -> f64 {
         score -= deficit * 25.0;
     }
 
+    // Tight-loop body compactness penalty: detect 2×2 and similar patterns.
+    // Flood fill territory doesn't catch these because the snake still
+    // controls 25+ cells via Voronoi even when its body is in a tiny loop.
+    // A length-4 snake in a 2×2 box has head.dist(tail) = 1.
+    if us.length >= 4 {
+        let head_tail_dist = us.head.dist(&us.tail);
+        if head_tail_dist <= 1 {
+            // Extremely compact body — likely a 2×2 loop
+            score -= 50.0;
+        } else if head_tail_dist * 3 < us.length {
+            // Still too compact for the snake's length
+            score -= 25.0;
+        }
+    }
+
     // Territory comparisons — scale bonuses by phase so they don't drown food
     // With 3 opponents, old +15/-20 gave ±105 swing, drowning opening food
     let (terr_bonus, terr_penalty) = if is_opening {

@@ -2,6 +2,41 @@
 
 ## 2026-03-07
 
+### Fix Paranoid Opponent Model + Tight-Loop Detection (v1.7.0)
+
+**Replay:** `Ouroboros_2026-03-07T20-24-14.json`
+**Problem:** Ouroboros stayed length 4 for 14+ turns. At turn 7, food at (10,6)
+was just 2 steps away (dist=2 → 1 step RIGHT) but the snake went LEFT. Then
+formed two separate 2×2 loops (turns 10-11, 13-14). test_snake_3 ate center food
+and grew to 5 while we orbited aimlessly.
+
+**Root Cause 1 — Paranoid opponent model too aggressive:**
+
+- `paranoid_min` assumed equal-length opponents always chase us (`opp_len >= our_len`)
+- In 4-player games, 3 equal-length opponents ALL converge on us at depth 8
+- Any wall-adjacent position (like food at (10,6)) looks like a death trap
+- Also used `board.turn < 10` (incremented per ply), so center-seeking exception
+  expired mid-search tree
+
+**Root Cause 2 — 2×2 loop undetectable:**
+
+- Anti-circling used flood fill territory threshold of 8 cells
+- Snake in a 2×2 box mid-board still controls 25+ cells via Voronoi
+- Penalty never triggered despite obvious looping
+
+**Changes (search.rs):**
+
+- **Distance-based opponent model** replacing turn-based: `dist > 5` → seek center
+- **Only strictly-bigger + close opponents chase** (`opp_len > our_len`, was `>=`)
+- **Equal-length close opponents seek center** (both avoid head-to-head)
+- Removes all `board.turn` dependency from opponent heuristic
+
+**Changes (eval.rs):**
+
+- **Body compactness penalty:** head.dist(tail) ≤ 1 at length ≥ 4 → -50 pts
+- **Moderate compactness penalty:** head.dist(tail) × 3 < length → -25 pts
+- Catches 2×2 loops that flood-fill territory can't detect
+
 ### Fix Food vs Territory Imbalance (v1.6.0)
 
 **Replay:** `Ouroboros_2026-03-07T19-51-33.json`
@@ -10,12 +45,14 @@
 toward food. From turn 5 onward, food was virtually invisible at equal length.
 
 **Root Cause — territory comparison bonuses drowning food:**
+
 - Territory comparisons gave +15/-20 per opponent, creating ±105 swing across 3 foes
 - Opening food was 35pts/step — only 35pt difference per step, easily overcome
 - Early equal-length food was 12/step — effectively zero vs territory 200
 - Early territory weight (200) further amplified the imbalance
 
 **Changes:**
+
 - **Phase-dependent territory comparisons:** opening ±5/8, early ±10/12, mid/late ±15/20
 - **Opening food: 35→50/step**, dist≤1 bonus 100→150, dist≤2 bonus 50→75
 - **Early shorter food: 25→30/step**, add dist≤1 bonus of 80

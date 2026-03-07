@@ -410,26 +410,39 @@ fn paranoid_min(
             let our_len = board.snakes[board.our_index].length;
 
             let dist_to_us = board.snakes[oi].head.dist(&our_head);
-            let best_opp_move = if board.turn < 10 && dist_to_us > 4 {
-                // Early game + far away: opponent moves toward center (realistic)
+            // Distance-based opponent model (no board.turn dependency).
+            // Previously equal-length opponents always chased us, making
+            // the paranoid search see walls as death traps (3 snakes
+            // converging). Now only strictly-bigger + close opponents
+            // chase — much more realistic for 4-player games.
+            let best_opp_move = if dist_to_us > 5 {
+                // Far away: opponent plays their own game (seek center)
                 let center = Coord::new(board.width / 2, board.height / 2);
                 opp_safe
                     .iter()
                     .min_by_key(|(_, c)| c.dist(&center))
                     .unwrap()
                     .0
-            } else if opp_len >= our_len {
-                // They're bigger/equal: they chase us
+            } else if opp_len > our_len {
+                // Strictly bigger + close: they chase us (head-to-head advantage)
                 opp_safe
                     .iter()
                     .min_by_key(|(_, c)| c.dist(&our_head))
                     .unwrap()
                     .0
-            } else {
-                // They're smaller: they run away
+            } else if opp_len < our_len {
+                // Smaller + close: they avoid us
                 opp_safe
                     .iter()
                     .max_by_key(|(_, c)| c.dist(&our_head))
+                    .unwrap()
+                    .0
+            } else {
+                // Equal length + close: seek center (both avoid head-to-head)
+                let center = Coord::new(board.width / 2, board.height / 2);
+                opp_safe
+                    .iter()
+                    .min_by_key(|(_, c)| c.dist(&center))
                     .unwrap()
                     .0
             };
