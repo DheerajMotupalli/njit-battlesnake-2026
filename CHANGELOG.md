@@ -2,7 +2,34 @@
 
 ## 2026-03-07
 
-### Bug Fix: Self-Collision / Reversal Death (v1.1.0)
+### Anti-Circling & Persistent Food Priority (v1.4.0)
+
+**Problem:** Snake gets trapped in tight 2×2 circular loops for dozens of turns and never breaks out, missing food opportunities. In one game, Ouroboros stayed at length 4 for 65+ turns while opponents grew to length 11. In another, the snake circled at turns 10-15 and 20-24 before eventually finding food.
+
+**Root Cause (three issues):**
+
+1. **No penalty for tiny territory:** A 2×2 loop gives only ~4 cells of territory on a 121-cell board. The evaluation saw this as "safe" because tail was reachable (+30) and tail distance was short (+21). Nothing punished the snake for self-trapping.
+
+2. **Mid/late food priority gated on low health:** After the opening, food proximity was only rewarded when health dropped below 50. A snake at health 80+ had almost zero incentive to seek food — just +2/step towards nearest food. This meant the "safe loop" almost always beat "move toward food."
+
+3. **No length reward after early game:** The absolute length bonus (rewarding eating food) stopped after turn 20. Mid/late game positions got no direct credit for having eaten food.
+
+**Fixes applied (eval.rs):**
+
+- **Anti-circling territory penalty:** When territory < max(length × 1.5, 8) cells, apply -25 points per deficit cell. A length-4 snake in a 2×2 loop (4 cells) gets -100 penalty, overwhelming the tail-safety bonus.
+
+- **Always-on food priority:** Mid/late game food seeking no longer waits for health < 50:
+    - Shorter than any opponent → +15/step closer, +30 bonus at distance ≤ 2
+    - Health < 80 → scaled urgency from +4 to +16 per step
+    - Health ≥ 80 → +4/step (doubled from v1.3.0's +2)
+
+- **Absolute length bonus in all phases:** Opening +30/length, early +25/length, mid/late +10/length. This ensures eating food gives a tangible score advantage throughout the game.
+
+**Files changed:** `src/eval.rs`
+
+---
+
+### Opening Overhaul — Eat First, Think Later (v1.3.0)
 
 **Problem:** Snake died on turn 3 by reversing into its own neck. The body at `(1,8)` was marked with TTL=1, and `is_cell_safe` treats `ttl <= 1` as passable, so the snake walked right back into itself.
 

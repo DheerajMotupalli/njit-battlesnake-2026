@@ -53,6 +53,14 @@ pub fn evaluate(board: &SimBoard) -> f64 {
     };
     score += territory_ratio * territory_weight;
 
+    // Anti-circling: heavily penalize dangerously small territory
+    // A snake in a tight loop (e.g., 2x2 = 4 cells) MUST break out
+    let min_safe_territory = (us.length as f64 * 1.5).max(8.0);
+    if our_territory < min_safe_territory {
+        let deficit = min_safe_territory - our_territory;
+        score -= deficit * 25.0;
+    }
+
     for &oi in &alive_opponents {
         let opp_territory = flood.territory[oi] as f64;
         if our_territory > opp_territory {
@@ -97,11 +105,17 @@ pub fn evaluate(board: &SimBoard) -> f64 {
         } else if is_early_game {
             // Early game, equal/longer: still value food proximity
             score += (10.0 - food_dist.min(10.0)) * 12.0;
-        } else if health < 50.0 {
-            let urgency = (50.0 - health) / 50.0;
-            score += (10.0 - food_dist.min(10.0)) * urgency * 12.0;
+        } else if shorter_than_any {
+            // Mid/late but shorter than someone: always chase food
+            score += (10.0 - food_dist.min(10.0)) * 15.0;
+            if food_dist <= 2.0 {
+                score += 30.0;
+            }
+        } else if health < 80.0 {
+            let urgency = (80.0 - health) / 80.0;
+            score += (10.0 - food_dist.min(10.0)) * (4.0 + urgency * 12.0);
         } else {
-            score += (8.0 - food_dist.min(8.0)) * 2.0;
+            score += (8.0 - food_dist.min(8.0)) * 4.0;
         }
     }
 
@@ -116,9 +130,13 @@ pub fn evaluate(board: &SimBoard) -> f64 {
     score += flood.reachable_food[board.our_index] as f64 * food_count_weight;
 
     // ── 3. Length advantage ──────────────────────────────────────────────────
-    // Absolute length bonus in early game: directly rewards eating
-    if is_early_game {
+    // Absolute length bonus: directly rewards eating in all phases
+    if is_opening {
+        score += us.length as f64 * 30.0;
+    } else if is_early_game {
         score += us.length as f64 * 25.0;
+    } else {
+        score += us.length as f64 * 10.0;
     }
 
     for &oi in &alive_opponents {
