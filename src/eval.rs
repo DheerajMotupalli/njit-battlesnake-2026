@@ -48,7 +48,7 @@ pub fn evaluate(board: &SimBoard) -> f64 {
     let territory_weight = if is_opening {
         80.0
     } else if is_early_game {
-        200.0
+        160.0
     } else {
         400.0
     };
@@ -62,12 +62,21 @@ pub fn evaluate(board: &SimBoard) -> f64 {
         score -= deficit * 25.0;
     }
 
+    // Territory comparisons — scale bonuses by phase so they don't drown food
+    // With 3 opponents, old +15/-20 gave ±105 swing, drowning opening food
+    let (terr_bonus, terr_penalty) = if is_opening {
+        (5.0, 8.0)
+    } else if is_early_game {
+        (10.0, 12.0)
+    } else {
+        (15.0, 20.0)
+    };
     for &oi in &alive_opponents {
         let opp_territory = flood.territory[oi] as f64;
         if our_territory > opp_territory {
-            score += 15.0;
+            score += terr_bonus;
         } else if our_territory < opp_territory {
-            score -= 20.0;
+            score -= terr_penalty;
         }
     }
 
@@ -89,23 +98,30 @@ pub fn evaluate(board: &SimBoard) -> f64 {
         let food_dist = flood.nearest_food_dist[board.our_index] as f64;
 
         if is_opening {
-            // Opening: food is the TOP priority — each step closer ~35 pts
-            score += (15.0 - food_dist.min(15.0)) * 35.0;
+            // Opening: food is the TOP priority — each step closer ~50 pts
+            // Must dominate territory (80 weight) + territory comparisons (±24)
+            score += (15.0 - food_dist.min(15.0)) * 50.0;
             // Massive bonus for being about to eat
             if food_dist <= 1.0 {
-                score += 100.0;
+                score += 150.0;
             } else if food_dist <= 2.0 {
-                score += 50.0;
+                score += 75.0;
             }
         } else if is_early_game && shorter_than_any {
             // Early game + we're shorter: aggressively chase food
-            score += (12.0 - food_dist.min(12.0)) * 25.0;
-            if food_dist <= 2.0 {
+            score += (12.0 - food_dist.min(12.0)) * 30.0;
+            if food_dist <= 1.0 {
+                score += 80.0;
+            } else if food_dist <= 2.0 {
                 score += 50.0;
             }
         } else if is_early_game {
-            // Early game, equal/longer: still value food proximity
-            score += (10.0 - food_dist.min(10.0)) * 12.0;
+            // Early game, equal/longer: growth still critical in 4-player
+            // Was 12/step — way too low vs territory 160 + comparisons ±36
+            score += (12.0 - food_dist.min(12.0)) * 22.0;
+            if food_dist <= 2.0 {
+                score += 35.0;
+            }
         } else if shorter_than_any {
             // Mid/late but shorter than someone: always chase food
             score += (10.0 - food_dist.min(10.0)) * 15.0;

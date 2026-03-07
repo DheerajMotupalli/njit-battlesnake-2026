@@ -2,6 +2,26 @@
 
 ## 2026-03-07
 
+### Fix Food vs Territory Imbalance (v1.6.0)
+
+**Replay:** `Ouroboros_2026-03-07T19-51-33.json`
+**Problem:** Ouroboros stayed length 4 for 14+ turns, ignoring food at (5,1) just
+2-3 steps away. On turn 3 (opening) it went UP toward center instead of RIGHT
+toward food. From turn 5 onward, food was virtually invisible at equal length.
+
+**Root Cause — territory comparison bonuses drowning food:**
+- Territory comparisons gave +15/-20 per opponent, creating ±105 swing across 3 foes
+- Opening food was 35pts/step — only 35pt difference per step, easily overcome
+- Early equal-length food was 12/step — effectively zero vs territory 200
+- Early territory weight (200) further amplified the imbalance
+
+**Changes:**
+- **Phase-dependent territory comparisons:** opening ±5/8, early ±10/12, mid/late ±15/20
+- **Opening food: 35→50/step**, dist≤1 bonus 100→150, dist≤2 bonus 50→75
+- **Early shorter food: 25→30/step**, add dist≤1 bonus of 80
+- **Early equal food: 12→22/step** (range 12→12), add dist≤2 bonus of 35
+- **Early territory weight: 200→160** to let food compete
+
 ### Fix Search Phase Leak — root_turn for Eval (v1.5.0)
 
 **Problem:** Despite huge opening food bonuses (+590pts at distance 1), Ouroboros at turn 1 with food 1 step away chose to go in the opposite direction. The snake stayed at length 3 for 14+ turns while all opponents grew to length 5-6.
