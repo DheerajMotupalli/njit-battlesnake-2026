@@ -404,8 +404,10 @@ impl SimBoard {
                     if bi == 0 {
                         new_board.cells[idx] = Cell::SnakeHead(si as u8);
                     } else {
-                        let ttl = (body_len - 1 - bi) as u16;
-                        new_board.cells[idx] = Cell::SnakeBody(si as u8, ttl.max(1));
+                        // Match from_game_state: TTL = body_len - bi
+                        // Tail (bi = body_len-1) gets TTL=1 (will move next turn)
+                        let ttl = (body_len - bi) as u16;
+                        new_board.cells[idx] = Cell::SnakeBody(si as u8, ttl);
                     }
                 }
             }

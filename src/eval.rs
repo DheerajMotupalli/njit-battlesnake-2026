@@ -30,102 +30,167 @@ pub fn evaluate(board: &SimBoard) -> f64 {
 
     let mut score = 0.0;
 
-    // ── 1. Territory control (most important: ~40%) ──────────────────────────
+    // Determine game phase
+    let is_opening = board.turn < 5; // First ~5 turns: must eat immediately
+    let is_early_game = board.turn < 20; // First ~20 turns: growth is critical
+    let shorter_than_all = alive_opponents
+        .iter()
+        .all(|&oi| board.snakes[oi].length > us.length);
+    let shorter_than_any = alive_opponents
+        .iter()
+        .any(|&oi| board.snakes[oi].length > us.length);
+
+    // ── 1. Territory control ─────────────────────────────────────────────────
     let our_territory = flood.territory[board.our_index] as f64;
     let territory_ratio = our_territory / total_cells;
-    score += territory_ratio * 400.0;
+    // Territory is much less important in the opening when eating should dominate
+    let territory_weight = if is_opening {
+        80.0
+    } else if is_early_game {
+        200.0
+    } else {
+        400.0
+    };
+    score += territory_ratio * territory_weight;
 
-    // Bonus for having more territory than all opponents
     for &oi in &alive_opponents {
         let opp_territory = flood.territory[oi] as f64;
         if our_territory > opp_territory {
-            score += 20.0;
+            score += 15.0;
         } else if our_territory < opp_territory {
-            score -= 30.0; // Penalise being behind more harshly
+            score -= 20.0;
         }
     }
 
-    // ── 2. Health & food management (~20%) ────────────────────────────────────
+    // ── 2. Health & food management ──────────────────────────────────────────
     let health = us.health as f64;
 
-    // Health scoring with urgency curve
     if health < 10.0 {
-        score -= (10.0 - health) * 15.0; // Critical: heavy penalty
+        score -= (10.0 - health) * 15.0;
     } else if health < 30.0 {
-        score -= (30.0 - health) * 3.0; // Low: moderate penalty
+        score -= (30.0 - health) * 3.0;
     } else if health < 50.0 {
-        score += health * 0.5; // Healthy: mild bonus
+        score += health * 0.5;
     } else {
-        score += 25.0; // Full: flat bonus (don't over-value high health)
+        score += 25.0;
     }
 
-    // Food proximity when hungry
-    if health < 40.0 && flood.nearest_food_dist[board.our_index] < i32::MAX {
+    // Food proximity — THE dominant signal in the opening
+    if flood.nearest_food_dist[board.our_index] < i32::MAX {
         let food_dist = flood.nearest_food_dist[board.our_index] as f64;
-        // Closer food is better when hungry, scaled by urgency
-        let urgency = (40.0 - health) / 40.0;
-        score += (10.0 - food_dist.min(10.0)) * urgency * 10.0;
+
+        if is_opening {
+            // Opening: food is the TOP priority — each step closer ~35 pts
+            score += (15.0 - food_dist.min(15.0)) * 35.0;
+            // Massive bonus for being about to eat
+            if food_dist <= 1.0 {
+                score += 100.0;
+            } else if food_dist <= 2.0 {
+                score += 50.0;
+            }
+        } else if is_early_game && shorter_than_any {
+            // Early game + we're shorter: aggressively chase food
+            score += (12.0 - food_dist.min(12.0)) * 25.0;
+            if food_dist <= 2.0 {
+                score += 50.0;
+            }
+        } else if is_early_game {
+            // Early game, equal/longer: still value food proximity
+            score += (10.0 - food_dist.min(10.0)) * 12.0;
+        } else if health < 50.0 {
+            let urgency = (50.0 - health) / 50.0;
+            score += (10.0 - food_dist.min(10.0)) * urgency * 12.0;
+        } else {
+            score += (8.0 - food_dist.min(8.0)) * 2.0;
+        }
     }
 
     // Reachable food count
-    score += flood.reachable_food[board.our_index] as f64 * 5.0;
+    let food_count_weight = if is_opening {
+        15.0
+    } else if is_early_game {
+        10.0
+    } else {
+        5.0
+    };
+    score += flood.reachable_food[board.our_index] as f64 * food_count_weight;
 
-    // ── 3. Length advantage (~15%) ────────────────────────────────────────────
+    // ── 3. Length advantage ──────────────────────────────────────────────────
+    // Absolute length bonus in early game: directly rewards eating
+    if is_early_game {
+        score += us.length as f64 * 25.0;
+    }
+
     for &oi in &alive_opponents {
         let length_diff = us.length - board.snakes[oi].length;
         if length_diff > 0 {
-            // We're longer: can win head-to-head
             score += (length_diff as f64).min(5.0) * 15.0;
         } else if length_diff < 0 {
-            // They're longer: penalise
-            score += length_diff as f64 * 8.0;
+            let penalty = if is_opening {
+                25.0
+            } else if is_early_game {
+                18.0
+            } else {
+                10.0
+            };
+            score += length_diff as f64 * penalty;
         }
-        // Equal length: slight penalty (can't win h2h)
     }
 
-    // ── 4. Aggression / kill potential (~10%) ─────────────────────────────────
+    // Extra penalty for being shorter than ALL opponents
+    if shorter_than_all && !alive_opponents.is_empty() {
+        score -= if is_opening { 60.0 } else { 50.0 };
+    }
+
+    // ── 4. Aggression / kill potential ────────────────────────────────────────
     for &oi in &alive_opponents {
         let opp = &board.snakes[oi];
         if !opp.alive {
             continue;
         }
 
-        // Reward being near shorter opponents (can kill them head-to-head)
         if us.length > opp.length {
             let dist = us.head.dist(&opp.head) as f64;
             if dist <= 4.0 {
-                score += (5.0 - dist) * 12.0; // Chase smaller snakes
+                score += (5.0 - dist) * 12.0;
             }
         }
 
-        // Reward opponent having few safe moves (cornered)
         let opp_safe = board.safe_moves(oi).len() as f64;
         if opp_safe <= 1.0 {
-            score += 40.0; // Opponent is nearly trapped
+            score += 40.0;
         } else if opp_safe <= 2.0 {
             score += 15.0;
         }
     }
 
-    // ── 5. Tail accessibility (~10%) ──────────────────────────────────────────
+    // ── 5. Tail accessibility ────────────────────────────────────────────────
+    // Reduce tail weight during opening so it doesn't override food-seeking
     if flood.can_reach_tail {
-        score += 30.0; // Can always chase our tail as an escape
+        score += if is_opening { 10.0 } else { 30.0 };
     } else {
-        score -= 40.0; // Can't reach tail: we might get trapped
+        score -= if is_opening { 10.0 } else { 40.0 };
     }
 
-    // Add mild bonus for being close to tail (escape route)
     if flood.tail_distance < i32::MAX {
         let td = flood.tail_distance as f64;
         score += (15.0 - td.min(15.0)) * 1.5;
     }
 
-    // ── 6. Center control (~5%) ──────────────────────────────────────────────
+    // ── 6. Center control ────────────────────────────────────────────────────
     let center_x = board.width as f64 / 2.0;
     let center_y = board.height as f64 / 2.0;
     let dist_to_center =
         ((us.head.x as f64 - center_x).abs() + (us.head.y as f64 - center_y).abs()) / total_cells;
-    score -= dist_to_center * 15.0;
+    // No center pull in opening (don't fight food-seeking)
+    let center_weight = if is_opening {
+        0.0
+    } else if is_early_game {
+        10.0
+    } else {
+        15.0
+    };
+    score -= dist_to_center * center_weight;
 
     // ── 7. Royale-specific: avoid hazards ────────────────────────────────────
     if board.mode == GameMode::Royale {

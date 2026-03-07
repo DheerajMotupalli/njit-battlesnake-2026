@@ -1,6 +1,6 @@
 use crate::board::SimBoard;
 use crate::eval::evaluate;
-use crate::types::Direction;
+use crate::types::{Coord, Direction};
 use std::time::Instant;
 
 /// Result of the search: best move and its score.
@@ -409,7 +409,16 @@ fn paranoid_min(
             let opp_len = board.snakes[oi].length;
             let our_len = board.snakes[board.our_index].length;
 
-            let best_opp_move = if opp_len >= our_len {
+            let dist_to_us = board.snakes[oi].head.dist(&our_head);
+            let best_opp_move = if board.turn < 10 && dist_to_us > 4 {
+                // Early game + far away: opponent moves toward center (realistic)
+                let center = Coord::new(board.width / 2, board.height / 2);
+                opp_safe
+                    .iter()
+                    .min_by_key(|(_, c)| c.dist(&center))
+                    .unwrap()
+                    .0
+            } else if opp_len >= our_len {
                 // They're bigger/equal: they chase us
                 opp_safe
                     .iter()
