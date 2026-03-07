@@ -32,6 +32,11 @@ pub struct SimBoard {
     pub mode: GameMode,
     pub hazard_damage: i32,
     pub turn: u32,
+    /// The actual game turn at the root of the search tree.
+    /// Unlike `turn`, this is NEVER incremented during `apply_moves()`.
+    /// Used by eval for phase detection so opening strategy persists
+    /// throughout the search tree.
+    pub root_turn: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -81,6 +86,7 @@ impl SimBoard {
             mode,
             hazard_damage,
             turn: state.turn,
+            root_turn: state.turn,
         };
 
         // Place hazards first (before food, so we can make HazardFood)

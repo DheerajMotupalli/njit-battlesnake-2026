@@ -2,6 +2,18 @@
 
 ## 2026-03-07
 
+### Fix Search Phase Leak — root_turn for Eval (v1.5.0)
+
+**Problem:** Despite huge opening food bonuses (+590pts at distance 1), Ouroboros at turn 1 with food 1 step away chose to go in the opposite direction. The snake stayed at length 3 for 14+ turns while all opponents grew to length 5-6.
+
+**Root Cause:** `apply_moves()` increments `board.turn += 1` on every search ply. When the paranoid search (depth 8) evaluates positions from turn 1, leaf nodes see `board.turn = 9`. The eval's phase detection (`board.turn < 5` for opening) returns false at depth 4+, switching to early/mid-game weights where territory (200-400) crushes the opening food bonus (35/step + 100). The search effectively "looks past" the opening phase and sees eating in a corner as bad territory.
+
+**Fix:** Added `root_turn: u32` field to `SimBoard` — set once in `from_game_state()`, never incremented during `apply_moves()`. The eval now uses `board.root_turn` for phase detection: `is_opening = board.root_turn < 5`, `is_early_game = board.root_turn < 20`. This ensures opening strategy (eat food at all costs) persists throughout the entire search tree, regardless of search depth.
+
+**Files changed:** `src/board.rs`, `src/eval.rs`
+
+---
+
 ### Anti-Circling & Persistent Food Priority (v1.4.0)
 
 **Problem:** Snake gets trapped in tight 2×2 circular loops for dozens of turns and never breaks out, missing food opportunities. In one game, Ouroboros stayed at length 4 for 65+ turns while opponents grew to length 11. In another, the snake circled at turns 10-15 and 20-24 before eventually finding food.

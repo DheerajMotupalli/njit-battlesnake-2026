@@ -30,9 +30,10 @@ pub fn evaluate(board: &SimBoard) -> f64 {
 
     let mut score = 0.0;
 
-    // Determine game phase
-    let is_opening = board.turn < 5; // First ~5 turns: must eat immediately
-    let is_early_game = board.turn < 20; // First ~20 turns: growth is critical
+    // Determine game phase — use root_turn (real game turn, not search depth)
+    // This ensures opening food priority persists throughout the entire search tree
+    let is_opening = board.root_turn < 5; // First ~5 turns: must eat immediately
+    let is_early_game = board.root_turn < 20; // First ~20 turns: growth is critical
     let shorter_than_all = alive_opponents
         .iter()
         .all(|&oi| board.snakes[oi].length > us.length);
