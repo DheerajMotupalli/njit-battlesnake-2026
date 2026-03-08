@@ -102,7 +102,10 @@ struct SearchState {
 impl SearchState {
     fn check_time(&mut self) -> bool {
         self.nodes += 1;
-        if self.nodes % 1024 == 0 && Instant::now() >= self.deadline {
+        // Check every 256 nodes instead of 1024 to catch timeouts sooner.
+        // This is critical when search complexity spikes (e.g., switching
+        // from paranoid multiplayer to 1v1 minimax).
+        if self.nodes % 256 == 0 && Instant::now() >= self.deadline {
             self.timed_out = true;
             return true;
         }

@@ -8,9 +8,11 @@ use tracing::info;
 pub fn get_move(state: &GameState) -> Direction {
     let board = SimBoard::from_game_state(state);
 
-    // Calculate time budget: use 85% of timeout, minimum 50ms
+    // Calculate time budget: use 70% of timeout to leave margin for
+    // HTTP response serialization and network latency. Previous 85%
+    // caused timeouts when transitioning from multiplayer to 1v1.
     let timeout_ms = state.game.timeout as u64;
-    let budget_ms = (timeout_ms * 85 / 100).max(50).min(450);
+    let budget_ms = (timeout_ms * 70 / 100).max(50);
 
     info!(
         turn = state.turn,

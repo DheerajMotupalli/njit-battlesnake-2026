@@ -1,5 +1,41 @@
 # Changelog — Ouroboros Battlesnake
 
+## 2026-03-08
+
+### Fix Timeout-Induced Wall Death (v1.8.0)
+
+**Replay:** `Ouroboros_2026-03-08T15-29-23.json`
+**Problem:** Ouroboros walked into the left wall at turn 123 from (0,6) despite
+having safe moves up and down. The snake moved LEFT 3 turns in a row (T120-122)
+at exactly 500ms latency (the server timeout), then hit the wall.
+
+**Root Cause — Search timeout on mode transition:**
+
+- At turn 119, test_snake_1 was eliminated (3→2 snakes alive)
+- At turn 120, `alive_count()` returned 2, switching from paranoid search
+  (depth 8, simpler branching) to 1v1 minimax (depth 15, full branching)
+- The 1v1 search at depth 15 is dramatically more expensive than paranoid at
+  depth 8 — even depth 1 in 1v1 iterates all (our_moves × opp_moves) combos
+- The time budget was 85% of 500ms = 425ms — too aggressive
+- By the time the search completed + JSON serialized + HTTP response sent,
+  total latency exceeded 500ms on 3 consecutive turns
+- CLI repeated last cached direction (LEFT) for all 3 timeouts
+- Snake marched left: (3,6) → (2,6) → (1,6) → (0,6) → wall
+
+**Fix:**
+
+1. **Reduced time budget from 85% → 70%** of timeout (350ms for 500ms games)
+   - Provides 150ms margin for HTTP overhead, JSON parsing, and network latency
+   - Removed the `.min(450)` cap that was counterproductive
+2. **Increased time check frequency**: `check_time()` now polls every 256 nodes
+   instead of 1024, catching timeouts 4× faster when search complexity spikes
+
+**Food gap note:** test_snake_3 also dominated food collection (eating 9 food
+vs Ouroboros's 6), reaching length 15 vs 9. This length disparity contributed
+to the territorial squeeze that led to the cornering.
+
+---
+
 ## 2026-03-07
 
 ### Fix Paranoid Opponent Model + Tight-Loop Detection (v1.7.0)
