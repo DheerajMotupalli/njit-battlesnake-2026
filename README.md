@@ -1,4 +1,4 @@
-# Battlesnake — Hackathon Champion
+# Ourobouros - NJIT BattleSnake 2026 3rd Place Champion
 
 A high-performance Battlesnake server written in Rust with iterative-deepening minimax search, alpha-beta pruning, and Voronoi flood fill territory evaluation.
 
@@ -25,13 +25,6 @@ PORT=8080 ./target/release/battlesnake
 curl http://localhost:8080/
 ```
 
-## Deploy to Fly.io
-
-```bash
-fly launch
-fly deploy
-```
-
 ## Architecture
 
 ```
@@ -44,14 +37,3 @@ src/
 ├── search.rs  — Iterative deepening minimax + paranoid search
 └── logic.rs   — Move selection entry point
 ```
-
-## Evaluation Weights
-
-| Factor            | Weight | Description                            |
-| ----------------- | ------ | -------------------------------------- |
-| Territory control | ~40%   | Voronoi area from flood fill           |
-| Health/food       | ~20%   | Urgency-based food seeking             |
-| Length advantage  | ~15%   | Head-to-head win potential             |
-| Aggression        | ~10%   | Chase smaller snakes, corner opponents |
-| Tail access       | ~10%   | Escape route guarantee                 |
-| Center control    | ~5%    | Board position quality                 |
